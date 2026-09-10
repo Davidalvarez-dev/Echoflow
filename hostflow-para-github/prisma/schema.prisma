@@ -1,0 +1,356 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum ReservationChannel {
+  DIRECT
+  AIRBNB
+  BOOKING
+  VRBO
+}
+
+enum ReservationStage {
+  INQUIRY
+  CONVERSATION
+  QUOTED
+  BOOKED
+  PAID
+  STAYING
+  COMPLETED
+  LOST
+  ABANDONED
+  CANCELLED
+}
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+  ABANDONED
+}
+
+enum AutomationTrigger {
+  OPPORTUNITY_CREATED
+  OPPORTUNITY_STAGE_CHANGED
+  QUOTE_SENT
+  PAYMENT_RECEIVED
+  CHECK_IN_DATE_REACHED
+}
+
+enum AutomationActionType {
+  MOVE_STAGE
+  SET_STATUS
+  SEND_MESSAGE
+  CREATE_TASK
+}
+
+enum BusinessUnitType {
+  LODGING
+  RESTAURANT
+  SPA
+  OTHER
+}
+
+enum CatalogItemType {
+  ROOM
+  PRODUCT
+  SERVICE
+  PACKAGE
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+enum SaleStatus {
+  PENDING
+  PAID
+  REFUNDED
+  VOID
+}
+
+enum SaleChannel {
+  PLATFORM
+  POS
+  FRONT_DESK
+  OTA
+  OTHER
+}
+
+model Property {
+  id           String        @id @default(cuid())
+  name         String
+  unit         String?
+  nightlyRate  Float         @default(580)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  reservations Reservation[]
+  catalogItems CatalogItem[]
+}
+
+model Guest {
+  id           String        @id @default(cuid())
+  name         String
+  firstName    String?
+  lastName     String?
+  email        String?
+  phone        String?
+  location     String?
+  country      String?
+  language     String?
+  createdAt    DateTime      @default(now())
+  reservations Reservation[]
+  quotes       Quote[]
+  sales        Sale[]
+}
+
+model Reservation {
+  id          String             @id @default(cuid())
+  property    Property           @relation(fields: [propertyId], references: [id])
+  propertyId  String
+  guest       Guest              @relation(fields: [guestId], references: [id])
+  guestId     String
+  guestCount  Int                @default(1)
+  adults      Int                @default(1)
+  children    Int                @default(0)
+  infants     Int                @default(0)
+  pets        Int                @default(0)
+  source      String?
+  hasQuote    Boolean            @default(false)
+  checkIn     DateTime
+  checkOut    DateTime
+  channel     ReservationChannel @default(DIRECT)
+  status      ReservationStatus  @default(CONFIRMED)
+  stage       ReservationStage   @default(BOOKED)
+  opportunityStatus OpportunityStatus @default(OPEN)
+  lostReason String?
+  statusChangedAt DateTime?
+  totalAmount Float              @default(0)
+  paidAmount  Float              @default(0)
+  currency    String             @default("MXN")
+  notes       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  messages    Message[]
+  quotes      Quote[]
+  sales       Sale[]
+  automationRuns AutomationRun[]
+}
+
+model AutomationWorkflow {
+  id          String              @id @default(cuid())
+  name        String
+  description String?
+  trigger     AutomationTrigger
+  isPublished Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  actions     AutomationAction[]
+  runs        AutomationRun[]
+}
+
+model AutomationAction {
+  id                String               @id @default(cuid())
+  workflow          AutomationWorkflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflowId        String
+  position          Int                  @default(0)
+  type              AutomationActionType
+  targetStage       ReservationStage?
+  targetStatus      OpportunityStatus?
+  message           String?
+  createdAt         DateTime             @default(now())
+
+  @@unique([workflowId, position])
+}
+
+model AutomationRun {
+  id            String             @id @default(cuid())
+  workflow      AutomationWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflowId    String
+  reservation   Reservation        @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  reservationId String
+  trigger       AutomationTrigger
+  summary       String
+  createdAt     DateTime           @default(now())
+}
+
+model BusinessUnit {
+  id         String            @id @default(cuid())
+  name       String
+  type       BusinessUnitType
+  color      String            @default("#111111")
+  isActive   Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  categories CatalogCategory[]
+  items      CatalogItem[]
+  saleLines  SaleLine[]
+  quoteLines QuoteLine[]
+}
+
+model CatalogCategory {
+  id             String        @id @default(cuid())
+  name           String
+  businessUnit   BusinessUnit  @relation(fields: [businessUnitId], references: [id])
+  businessUnitId String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          CatalogItem[]
+
+  @@unique([businessUnitId, name])
+}
+
+model CatalogItem {
+  id             String             @id @default(cuid())
+  name           String
+  sku            String?            @unique
+  description    String?
+  type           CatalogItemType
+  unit           String             @default("unidad")
+  price          Float
+  cost           Float              @default(0)
+  taxRate        Float              @default(0.16)
+  isActive       Boolean            @default(true)
+  businessUnit   BusinessUnit       @relation(fields: [businessUnitId], references: [id])
+  businessUnitId String
+  category       CatalogCategory?   @relation(fields: [categoryId], references: [id])
+  categoryId     String?
+  property       Property?          @relation(fields: [propertyId], references: [id])
+  propertyId     String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  quoteLines     QuoteLine[]
+  saleLines      SaleLine[]
+  packageParts   PackageComponent[] @relation("PackageParent")
+  usedInPackages PackageComponent[] @relation("PackageItem")
+}
+
+model PackageComponent {
+  id        String      @id @default(cuid())
+  package   CatalogItem @relation("PackageParent", fields: [packageId], references: [id])
+  packageId String
+  item      CatalogItem @relation("PackageItem", fields: [itemId], references: [id])
+  itemId    String
+  quantity  Float       @default(1)
+
+  @@unique([packageId, itemId])
+}
+
+model Quote {
+  id            String       @id @default(cuid())
+  number        String       @unique
+  status        QuoteStatus  @default(DRAFT)
+  guest         Guest        @relation(fields: [guestId], references: [id])
+  guestId       String
+  reservation   Reservation? @relation(fields: [reservationId], references: [id])
+  reservationId String?
+  currency      String       @default("MXN")
+  subtotal      Float        @default(0)
+  taxTotal      Float        @default(0)
+  total         Float        @default(0)
+  expiresAt     DateTime?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  lines         QuoteLine[]
+  sale          Sale?
+}
+
+model QuoteLine {
+  id               String       @id @default(cuid())
+  quote            Quote        @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId          String
+  item             CatalogItem? @relation(fields: [itemId], references: [id])
+  itemId           String?
+  businessUnit     BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  businessUnitId   String
+  itemName         String
+  businessUnitName String
+  categoryName     String
+  quantity         Float        @default(1)
+  unit             String       @default("unidad")
+  unitPrice        Float
+  discountPct      Float        @default(0)
+  taxRate          Float        @default(0.16)
+  subtotal         Float
+  taxAmount        Float
+  total            Float
+  position         Int          @default(0)
+}
+
+model Sale {
+  id            String       @id @default(cuid())
+  number        String       @unique
+  status        SaleStatus   @default(PAID)
+  channel       SaleChannel  @default(PLATFORM)
+  quote         Quote?       @relation(fields: [quoteId], references: [id])
+  quoteId       String?      @unique
+  reservation   Reservation? @relation(fields: [reservationId], references: [id])
+  reservationId String?
+  guest         Guest?       @relation(fields: [guestId], references: [id])
+  guestId       String?
+  currency      String       @default("MXN")
+  subtotal      Float
+  taxTotal      Float
+  total         Float
+  paidAmount    Float        @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  lines         SaleLine[]
+}
+
+model SaleLine {
+  id               String       @id @default(cuid())
+  sale             Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId           String
+  item             CatalogItem? @relation(fields: [itemId], references: [id])
+  itemId           String?
+  businessUnit     BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  businessUnitId   String
+  itemName         String
+  businessUnitName String
+  categoryName     String
+  quantity         Float        @default(1)
+  unit             String       @default("unidad")
+  unitPrice        Float
+  discountPct      Float        @default(0)
+  taxRate          Float        @default(0.16)
+  subtotal         Float
+  taxAmount        Float
+  total            Float
+}
+
+enum MessageAuthor {
+  HOST
+  GUEST
+  SYSTEM
+}
+
+model Message {
+  id            String        @id @default(cuid())
+  reservation   Reservation   @relation(fields: [reservationId], references: [id])
+  reservationId String
+  author        MessageAuthor
+  body          String
+  createdAt     DateTime      @default(now())
+}
